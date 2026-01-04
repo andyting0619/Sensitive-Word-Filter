@@ -1,7 +1,7 @@
 # Sensitive Word Filter
 - A simple web application for sensitive word filtering using Aho-Corasick automaton.
 # The Link to the Demo Web Application
-- 
+- https://sensitive-word-filter.streamlit.app
 # Requirement
 - Python 3.10
 # How to Use
