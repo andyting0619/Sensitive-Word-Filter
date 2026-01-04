@@ -5,8 +5,7 @@ from collections import deque, defaultdict
 import math
 import pandas as pd
 
-st.set_page_config(page_title="Sensitive Word Filter",
-                   layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Sensitive Word Filter", layout="wide", initial_sidebar_state="collapsed")
 
 st.markdown("""
     <style>
@@ -86,7 +85,6 @@ st.markdown("""
     .main .block-container {
         padding-bottom: 5rem !important;
     }
-    /* 压缩表格行高 */
     div[data-testid="stDataFrame"] > div > div > div > div > table {
         font-size: 0.9rem !important;
     }
@@ -97,7 +95,6 @@ st.markdown("""
     }
     </style>
     """, unsafe_allow_html=True)
-
 
 class AhoCorasick:
     def __init__(self):
@@ -141,8 +138,7 @@ class AhoCorasick:
                         self.fail[next_state] = 0
 
                     if self.fail[next_state] in self.output:
-                        self.output[next_state].extend(
-                            self.output[self.fail[next_state]])
+                        self.output[next_state].extend(self.output[self.fail[next_state]])
 
     def search_with_path(self, text):
         original_text = text
@@ -242,9 +238,13 @@ class AhoCorasick:
                     row[f'δ({char})'] = '-'
 
             if state in self.fail:
-                row['Fail'] = f'S{self.fail[state]}'
+                fail_to = self.fail[state]
+                if fail_to == 0:
+                    row['Fail Link'] = 'S0'
+                else:
+                    row['Fail Link'] = f'S{state} → S{fail_to}'
             else:
-                row['Fail'] = '-'
+                row['Fail Link'] = '-'
 
             if state in self.output:
                 row['Output'] = ', '.join(self.output[state])
@@ -254,7 +254,6 @@ class AhoCorasick:
             table_data.append(row)
 
         return pd.DataFrame(table_data)
-
 
 def get_hierarchical_layout(G, automaton):
     levels = {0: 0}
@@ -278,21 +277,20 @@ def get_hierarchical_layout(G, automaton):
 
     for level, nodes in nodes_by_level.items():
         num_nodes = len(nodes)
-        y = -level * 200.0
+        y = -level * 250.0
 
         if num_nodes == 1:
             x_positions = [0]
         else:
-            total_width = max(15.0, num_nodes * 2.5)
-            x_positions = [i * (total_width / (num_nodes - 1)) - total_width / 2
-                           for i in range(num_nodes)]
+            total_width = max(20.0, num_nodes * 3.5)
+            x_positions = [i * (total_width / (num_nodes - 1)) - total_width / 2 
+                          for i in range(num_nodes)]
 
         nodes_sorted = sorted(nodes)
         for i, node in enumerate(nodes_sorted):
             pos[node] = (x_positions[i], y)
 
     return pos, max_level
-
 
 def get_best_layout(G, automaton, num_nodes):
     try:
@@ -311,17 +309,15 @@ def get_best_layout(G, automaton, num_nodes):
 
     try:
         if num_nodes <= 25:
-            pos = nx.kamada_kawai_layout(G, scale=4.0)
+            pos = nx.kamada_kawai_layout(G, scale=5.0)
             return pos, 5
     except:
         pass
 
-    pos = nx.spring_layout(G, k=10/math.sqrt(num_nodes),
-                           iterations=200, seed=42, scale=3.5)
+    pos = nx.spring_layout(G, k=15/math.sqrt(num_nodes), iterations=200, seed=42, scale=4.5)
     return pos, 5
 
-
-def create_interactive_graph(G, active_states, active_goto_edges, active_fail_edges, automaton, num_nodes):
+def create_interactive_graph(G, active_states, active_goto_edges, active_fail_edges, automaton, num_nodes, show_fail_edges=False):
     pos, max_level = get_best_layout(G, automaton, num_nodes)
 
     if active_states:
@@ -340,6 +336,7 @@ def create_interactive_graph(G, active_states, active_goto_edges, active_fail_ed
         node_size = 60
         font_size = 10
 
+    # 绘制 goto 边（直线蓝色）
     for (u, v, d) in G.edges(data=True):
         if d.get('edge_type') != 'goto':
             continue
@@ -353,8 +350,7 @@ def create_interactive_graph(G, active_states, active_goto_edges, active_fail_ed
             x=[x0, x1, None],
             y=[y0, y1, None],
             mode='lines',
-            line=dict(width=4 if is_active else 2,
-                      color='#FF8C00' if is_active else '#4A9EFF'),
+            line=dict(width=4 if is_active else 2, color='#FF8C00' if is_active else '#4A9EFF'),
             opacity=1.0 if is_active else 0.35,
             hoverinfo='none',
             showlegend=False
@@ -382,6 +378,50 @@ def create_interactive_graph(G, active_states, active_goto_edges, active_fail_ed
             arrowcolor='#FF8C00' if is_active else '#4A9EFF',
             opacity=1.0 if is_active else 0.35
         ))
+
+    # 绘制 fail 边（直线红色虚线）
+    if show_fail_edges:
+        for (u, v, d) in G.edges(data=True):
+            if d.get('edge_type') != 'fail':
+                continue
+
+            is_active = (u, v) in active_fail_edges
+
+            x0, y0 = pos[u]
+            x1, y1 = pos[v]
+
+            edge_traces.append(go.Scatter(
+                x=[x0, x1, None],
+                y=[y0, y1, None],
+                mode='lines',
+                line=dict(width=3.5 if is_active else 2, color='#FF1744' if is_active else '#FF5252', dash='dash'),
+                opacity=1.0 if is_active else 0.6,
+                hoverinfo='none',
+                showlegend=False
+            ))
+
+            dx = x1 - x0
+            dy = y1 - y0
+
+            arrow_start_x = x0 + dx * 0.68
+            arrow_start_y = y0 + dy * 0.68
+            arrow_end_x = x0 + dx * 0.72
+            arrow_end_y = y0 + dy * 0.72
+
+            annotations.append(dict(
+                x=arrow_end_x,
+                y=arrow_end_y,
+                ax=arrow_start_x,
+                ay=arrow_start_y,
+                xref='x', yref='y',
+                axref='x', ayref='y',
+                showarrow=True,
+                arrowhead=2,
+                arrowsize=1.0,
+                arrowwidth=2.0,
+                arrowcolor='#FF1744' if is_active else '#FF5252',
+                opacity=1.0 if is_active else 0.6
+            ))
 
     edge_label_traces = []
     for u, v, d in G.edges(data=True):
@@ -462,17 +502,15 @@ def create_interactive_graph(G, active_states, active_goto_edges, active_fail_ed
     fig = go.Figure(data=edge_traces + edge_label_traces + [node_trace])
     fig.update_layout(annotations=annotations)
 
-    y_min = -max_level * 200.0 - 30
-    y_max = 30
+    y_min = -max_level * 250.0 - 50
+    y_max = 50
 
     fig.update_layout(
         showlegend=False,
         hovermode='closest',
         margin=dict(b=5, l=5, r=5, t=5),
-        xaxis=dict(showgrid=False, zeroline=False,
-                   showticklabels=False, fixedrange=False),
-        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[
-                   y_min, y_max], fixedrange=False, scaleanchor=None),
+        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False, fixedrange=False),
+        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[y_min, y_max], fixedrange=False, scaleanchor=None),
         plot_bgcolor='#0E1117',
         paper_bgcolor='#0E1117',
         height=1000,
@@ -489,10 +527,8 @@ def create_interactive_graph(G, active_states, active_goto_edges, active_fail_ed
 
     return fig, config
 
-
 if 'sensitive_words' not in st.session_state:
-    st.session_state.sensitive_words = [
-        'kill', 'bomb', 'suicide', 'weapon', 'explosive']
+    st.session_state.sensitive_words = ['kill', 'bomb', 'suicide', 'weapon', 'explosive']
 if 'automaton' not in st.session_state:
     st.session_state.automaton = None
 if 'search_results' not in st.session_state:
@@ -502,7 +538,6 @@ if 'user_message' not in st.session_state:
 if 'transition_path' not in st.session_state:
     st.session_state.transition_path = []
 
-
 def build_automaton():
     ac = AhoCorasick()
     for word in st.session_state.sensitive_words:
@@ -510,14 +545,11 @@ def build_automaton():
     ac.build()
     st.session_state.automaton = ac
 
-
 if st.session_state.automaton is None:
     build_automaton()
 
-st.markdown('<div class="centered-title">🖥️ Sensitive Word Filter by Aho-Corasick Automaton</div>',
-            unsafe_allow_html=True)
-st.markdown('<div class="centered-credit">👨‍💻 Developed by Andy Ting Zhi Wei</div>',
-            unsafe_allow_html=True)
+st.markdown('<div class="centered-title">🔒 Sensitive Word Filter by Aho-Corasick Automaton</div>', unsafe_allow_html=True)
+st.markdown('<div class="centered-credit">Developed by Andy Ting Zhi Wei</div>', unsafe_allow_html=True)
 st.markdown("---")
 
 col1, col2 = st.columns([1, 2])
@@ -536,14 +568,13 @@ with col1:
                     st.session_state.sensitive_words.remove(word)
                     build_automaton()
                     if st.session_state.user_message:
-                        results, path = st.session_state.automaton.search_with_path(
-                            st.session_state.user_message)
+                        results, path = st.session_state.automaton.search_with_path(st.session_state.user_message)
                         st.session_state.search_results = results
                         st.session_state.transition_path = path
                     st.success(f"Deleted '{word}'!")
                     st.rerun()
     else:
-        st.info("No sensitive words, please add some below!")
+        st.info("No sensitive words. Add some below!")
 
     st.markdown("---")
 
@@ -557,28 +588,25 @@ with col1:
                 st.session_state.sensitive_words.append(new_word_clean)
                 build_automaton()
                 if st.session_state.user_message:
-                    results, path = st.session_state.automaton.search_with_path(
-                        st.session_state.user_message)
+                    results, path = st.session_state.automaton.search_with_path(st.session_state.user_message)
                     st.session_state.search_results = results
                     st.session_state.transition_path = path
                 st.success(f"Added '{new_word_clean}'!")
                 st.rerun()
             else:
-                st.warning("The word already exists!")
+                st.warning("Word already exists!")
         else:
             st.error("Please enter a word!")
 
     st.markdown("---")
 
     st.subheader("💬 Check Your Message")
-    user_input = st.text_area("Enter your message:",
-                              height=100, key="message_input")
+    user_input = st.text_area("Enter your message:", height=100, key="message_input")
 
     if st.button("Check Message"):
         if user_input:
             st.session_state.user_message = user_input
-            results, path = st.session_state.automaton.search_with_path(
-                user_input)
+            results, path = st.session_state.automaton.search_with_path(user_input)
             st.session_state.search_results = results
             st.session_state.transition_path = path
             st.rerun()
@@ -586,7 +614,7 @@ with col1:
             st.warning("Please enter a message!")
 
 with col2:
-    st.subheader("💻 Automaton Visualization")
+    st.subheader("🔍 Automaton Visualization")
 
     if st.session_state.automaton and st.session_state.sensitive_words:
         G = st.session_state.automaton.visualize()
@@ -594,8 +622,13 @@ with col2:
         metrics = st.session_state.automaton.get_complexity_metrics()
         num_nodes = metrics['num_states']
 
-        st.caption(
-            f"📊 {num_nodes} states, {metrics['num_goto_edges']} goto edges")
+        col_metric, col_toggle = st.columns([2, 1])
+        with col_metric:
+            # 修改：goto edges → transitions, fail edges → fail transitions
+            st.caption(f"📊 {num_nodes} states, {metrics['num_goto_edges']} transitions, {metrics['num_fail_edges']} fail transitions")
+        with col_toggle:
+            # 修改：Show fail edges → Show fail transitions
+            show_fail = st.checkbox("Show fail transitions", value=False, key="show_fail_edges")
 
         tab1, tab2 = st.tabs(["📊 Graph View", "📋 Transition Table"])
 
@@ -614,28 +647,26 @@ with col2:
                             active_fail_edges.add((trans['from'], trans['to']))
 
             fig, config = create_interactive_graph(
-                G, active_states, active_goto_edges, active_fail_edges,
-                st.session_state.automaton, num_nodes
+                G, active_states, active_goto_edges, active_fail_edges, 
+                st.session_state.automaton, num_nodes, show_fail_edges=show_fail
             )
 
             st.plotly_chart(fig, width='stretch', config=config)
-            st.caption(
-                "🟠 Active path | 🟢 Match states | 🔵 Goto transitions | 🟡 Active states")
+            st.caption("🟠 Active States | 🟢 Match States | 🔵 Transitions | 🔴 Fail Transitions")
 
         with tab2:
             df = st.session_state.automaton.get_transition_table()
 
+            # 修改：使用动态高度，去除固定 height=600
             st.dataframe(
                 df,
                 width='stretch',
-                hide_index=True,
-                height=600
+                hide_index=True
             )
-            st.caption(
-                "δ(char) = Goto function | Fail = Failure function | Output = Matched words")
+            st.caption("δ(char) = Goto function | Fail Link = Failure transition (fallback path) | Output = Matched words")
 
     elif not st.session_state.sensitive_words:
-        st.info("📭 Add some sensitive words to see the automaton.")
+        st.info("📭 Add sensitive words to see the automaton!")
 
     if st.session_state.transition_path:
         st.markdown("---")
@@ -648,47 +679,44 @@ with col2:
 
                 for trans in step['transitions']:
                     if trans['type'] == 'goto':
-                        st.markdown(f'<div class="transition-step">📍 Position {position}: Read "{char_display}" → Goto S{trans["from"]} → S{trans["to"]}</div>',
-                                    unsafe_allow_html=True)
+                        st.markdown(f'<div class="transition-step">📍 Position {position}: Read "{char_display}" → Goto S{trans["from"]} → S{trans["to"]}</div>', 
+                                   unsafe_allow_html=True)
                     else:
-                        st.markdown(f'<div class="transition-step">↩️ Position {position}: Failed at S{trans["from"]}, Fall back to S{trans["to"]}</div>',
-                                    unsafe_allow_html=True)
+                        st.markdown(f'<div class="transition-step">↩️ Position {position}: Failed at S{trans["from"]}, Fall back to S{trans["to"]}</div>', 
+                                   unsafe_allow_html=True)
 
                 if step['matches']:
                     for match in step['matches']:
-                        st.markdown(f'<div class="match-found">✅ Match: "{match["word"]}" at pos {match["start_pos"]} → "{match["matched_text"]}"</div>',
-                                    unsafe_allow_html=True)
+                        st.markdown(f'<div class="match-found">✅ Match: "{match["word"]}" at pos {match["start_pos"]} → "{match["matched_text"]}"</div>', 
+                                   unsafe_allow_html=True)
 
     st.markdown("---")
-    st.subheader("🔍 Detection Results")
+    st.subheader("🎯 Detection Results")
 
     if st.session_state.user_message:
         if st.session_state.search_results:
             st.write("**Sensitive words detected:**")
 
             highlighted_text = st.session_state.user_message
-            results_sorted = sorted(
-                st.session_state.search_results, key=lambda x: x[0], reverse=True)
+            results_sorted = sorted(st.session_state.search_results, key=lambda x: x[0], reverse=True)
 
             for pos, word in results_sorted:
-                original_word = st.session_state.user_message[pos:pos+len(
-                    word)]
+                original_word = st.session_state.user_message[pos:pos+len(word)]
                 highlighted_text = (
-                    highlighted_text[:pos] +
-                    f'<span class="highlight">{original_word}</span>' +
+                    highlighted_text[:pos] + 
+                    f'<span class="highlight">{original_word}</span>' + 
                     highlighted_text[pos+len(word):]
                 )
 
-            st.markdown(f'<div class="result-text" style="background-color: #262730; padding: 15px; border-radius: 5px; border-left: 4px solid #FF4B4B;">{highlighted_text}</div>',
-                        unsafe_allow_html=True)
+            st.markdown(f'<div class="result-text" style="background-color: #262730; padding: 15px; border-radius: 5px; border-left: 4px solid #FF4B4B;">{highlighted_text}</div>', 
+                       unsafe_allow_html=True)
 
             st.write("**Details:**")
             for pos, word in st.session_state.search_results:
                 matched_text = st.session_state.user_message[pos:pos+len(word)]
-                st.write(
-                    f"• Found '{word}' at position {pos} → '{matched_text}'")
+                st.write(f"• Found '{word}' at position {pos} → '{matched_text}'")
         else:
-            st.markdown('<div class="success-box">✅ No sensitive words found! Your message is safe.</div>',
-                        unsafe_allow_html=True)
+            st.markdown('<div class="success-box">✅ No sensitive words found! Your message is safe.</div>', 
+                       unsafe_allow_html=True)
     else:
         st.info("Enter a message and click 'Check Message' to see results.")
