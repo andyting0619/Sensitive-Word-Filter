@@ -1,4 +1,4 @@
-# Stock Vision AI
+# Sensitive Word Filter
 - A simple web application for sensitive word filtering using Aho-Corasick automaton.
 # The Link to the Demo Web Application
 - 
